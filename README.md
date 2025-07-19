@@ -9,11 +9,16 @@
   <a href="https://github.com/jadhavsharad/Youtube-Downloader/releases">
     <img src="https://img.shields.io/github/downloads/jadhavsharad/Youtube-Downloader/total?color=success" alt="Downloads">
   </a>
+  <img src="https://img.shields.io/badge/Reading%20Time-5%20mins-yellow" alt="Reading Time">
 </div>
 
 ## 🔍 Table of Contents
 - [✨ Key Features](#-key-features)
 - [🚀 Getting Started](#-getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Homebrew Installation](#homebrew-installation)
+  - [Tools Installation](#tools-installation)
+  - [First Run on macOS](#first-run-on-macos)
 - [📸 Screenshots](#-screenshots)
 - [🛠️ Usage Guide](#%EF%B8%8F-usage-guide)
 - [🧩 For Developers](#-for-developers)
@@ -32,28 +37,49 @@
 
 ## 🚀 Getting Started
 
-### Requirements
+### Prerequisites
 - macOS Ventura (13.0) or newer
 - Apple Silicon Mac (M1, M2, M3 or newer)
-- [Homebrew](https://brew.sh/) package manager (Installation Required)
+- Below Tools (Just copy paste the commands in macOS Terminal)
 
-### Installation (1 Minute Setup)
-1. **Install required tools**:
+### Homebrew Installation
+If you don't have Homebrew installed run this command in macOS Terminal:
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+### Tools Installation
+
+After homebrew installed run below command in macOS Terminal:
+
+ - **Install required tools**:
 ```bash
 brew install yt-dlp ffmpeg
 ```
 
-2. **Download the app**:
+ - **Download the app**:
    - ➡️ [Get Latest Version](https://github.com/jadhavsharad/Youtube-Downloader/releases)
    - Open the DMG file
    - Drag the app to your Applications folder
 
-3. **First run** (if needed):
+### First Run on macOS
+macOS might block the app because it's from an unidentified developer. Here's how to fix it:
+
+**Method 1: Using System Settings (Recommended)**
+| Step | Screenshot |
+|------|------------|
+| **1.** Right-click the app and select "Open" | <img width="300" alt="Right-click menu" src="https://github.com/user-attachments/assets/db62ee5a-a730-473c-bfe5-aa18f483bab7" /> |
+| **2.** You'll see this error message - click "Done" | <img width="300" alt="Error message" src="https://github.com/user-attachments/assets/71a02c3f-5531-4490-b964-cd46e9dbb1da" /> |
+| **3.** Go to System Settings > Privacy & Security | <img width="300" alt="System Settings" src="https://github.com/user-attachments/assets/c9f4cbad-3bb1-4c7f-bc90-ed85c44ca673" /> |
+| **4.** Scroll down to the "Security" section | *No screenshot needed* |
+| **5.** You'll see: "YouTube Downloader was blocked..." | <img width="300" alt="Security warning" src="https://github.com/user-attachments/assets/19d53a26-fb8b-4e46-9b21-011d51cb0976" /> |
+| **6.** Click "Open Anyway" | <img width="300" alt="Open Anyway button" src="https://github.com/user-attachments/assets/7058ef93-0951-4c86-970d-0d0f819cf699" /> |
+
+**Method 2: Using Terminal (Advanced)**
+If the above doesn't work, run this command in macOS Terminal:
 ```bash
 xattr -d com.apple.quarantine /Applications/YouTube\ Downloader.app
 ```
-
-4. **Launch and start downloading!** 🎉
 
 ## 📸 Screenshots
 
@@ -100,12 +126,23 @@ Youtube-Downloader/
 
 ## 🤝 Contribute
 
-We welcome contributions! Here's how to help:
+We warmly welcome contributions from developers of all skill levels! Whether you’re a seasoned Swift pro or just exploring open source, your ideas, skills, and feedback can help shape the future of this app.
 
-1. **Report bugs** - [Open an issue](https://github.com/jadhavsharad/Youtube-Downloader/issues)
-2. **Suggest features** - What would make this better?
-3. **Fix issues** - Check our "Good First Issue" tickets
-4. **Improve docs** - Help us make instructions clearer
+### There are many ways you can get involved:
+
+- 🐞 Found a bug? – Open an issue
+- 💡 Got a feature idea? – We’d love to hear it!
+- 🔧 Want to fix something? – Check out our “Good First Issue” tags to get started
+- 📚 Improve the docs – Clearer instructions help everyone
+
+### ✨ A Few Areas You Could Explore:
+- 🚀 Add playlist or batch download support
+- 🌐 Extend support to other video platforms
+- 📊 Enhance download progress, history, or analytics
+- 🎨 Refine the UI/UX, animations, or theme
+- 🛡️ Improve privacy or add security features
+
+**But don’t stop there — if you have ideas or improvements that don’t fall into these categories, go for it! Every contribution matters, and we’re excited to collaborate with you.**
 
 ### First-Time Setup
 ```bash
