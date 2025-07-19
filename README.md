@@ -9,7 +9,6 @@
   <a href="https://github.com/jadhavsharad/Youtube-Downloader/releases">
     <img src="https://img.shields.io/github/downloads/jadhavsharad/Youtube-Downloader/total?color=success" alt="Downloads">
   </a>
-  <img src="https://img.shields.io/badge/Reading%20Time-5%20mins-yellow" alt="Reading Time">
 </div>
 
 ## 🔍 Table of Contents
