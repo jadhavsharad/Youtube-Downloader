@@ -77,7 +77,7 @@ macOS might block the app because it's from an unidentified developer. Here's ho
 **Method 2: Using Terminal (Advanced)**
 If the above doesn't work, run this command in macOS Terminal:
 ```bash
-xattr -d com.apple.quarantine /Applications/YouTube\ Downloader.app
+sudo xattr -d com.apple.quarantine /Applications/YouTube\ Downloader.app
 ```
 
 ## 📸 Screenshots
