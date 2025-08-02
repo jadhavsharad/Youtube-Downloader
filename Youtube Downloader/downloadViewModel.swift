@@ -2,49 +2,37 @@ import Foundation
 import SwiftUI
 import AppKit
 
-// MARK: - Enums for Download Options
-
-/// Supported video container formats
-enum VideoContainer: String, CaseIterable {
+// MARK: - Enums for Download Options (Identifiable for ForEach)
+enum VideoContainer: String, CaseIterable, Identifiable {
     case mp4, mkv, webm, flv, avi
+    var id: Self { self }
 }
 
-/// Supported video quality levels
-enum VideoQuality: String, CaseIterable {
-    case q144p = "144p"
-    case q240p = "240p"
-    case q360p = "360p"
-    case q480p = "480p"
-    case q720p = "720p"
-    case q1080p = "1080p"
-    case q1440p = "1440p"
-    case q2160p = "2160p"
-    
-    /// Numeric value of quality level (height in pixels)
-    var pixelValue: Int {
-        return Int(rawValue.dropLast()) ?? 0
-    }
+enum VideoQuality: String, CaseIterable, Identifiable {
+    case q144p = "144p", q240p = "240p", q360p = "360p", q480p = "480p"
+    case q720p = "720p", q1080p = "1080p", q1440p = "1440p", q2160p = "2160p"
+    var id: Self { self }
+    var pixelValue: Int { Int(rawValue.dropLast()) ?? 0 }
 }
 
-/// Supported audio formats
-enum AudioFormat: String, CaseIterable {
+enum AudioFormat: String, CaseIterable, Identifiable {
     case mp3, m4a, wav, flac, opus, vorbis
+    var id: Self { self }
 }
 
-/// Supported audio quality levels
-enum AudioQuality: String, CaseIterable {
+enum AudioQuality: String, CaseIterable, Identifiable {
     case k64 = "64k", k128 = "128k", k192 = "192k", k256 = "256k", k320 = "320k"
+    var id: Self { self }
 }
 
-/// Download format options
-enum DownloadFormat: String, CaseIterable {
+enum DownloadFormat: String, CaseIterable, Identifiable {
     case best = "Best Quality (auto)"
     case video = "Best Video"
     case audio = "Best Audio"
+    var id: Self { self }
 }
 
 // MARK: - Download View Model
-
 @MainActor
 class DownloadViewModel: ObservableObject {
     
@@ -52,276 +40,290 @@ class DownloadViewModel: ObservableObject {
     @Published var singleURL = ""
     @Published var batchURLs = ""
     @Published var isBatchMode = false
-    @Published var embedSubtitles = false
-    @Published var embedMetadata = false
     @Published var downloadDirectory: URL?
-    @Published var subtitleLanguage = "all"
-    @Published var filenameTemplate = "%(title)s.%(ext)s"
-    @Published var autoOpenFolder = false
+    
+    // Format Selection
     @Published var selectedFormat: DownloadFormat = .best
     @Published var videoContainer: VideoContainer = .mp4
     @Published var videoQuality: VideoQuality = .q1080p
     @Published var audioFormat: AudioFormat = .mp3
     @Published var audioQuality: AudioQuality = .k128
-    @Published var downloadSpeedLimit = ""
+    
+    // Advanced Options
+    @Published var embedSubtitles = false
+    @Published var embedMetadata = false
     @Published var skipExistingFiles = false
+    @Published var autoOpenFolder = false
+    @Published var subtitleLanguage = "all"
+    @Published var filenameTemplate = "%(title)s.%(ext)s"
+    @Published var downloadSpeedLimit = ""
     @Published var throttleRate = ""
     
-    // MARK: - Download State Properties
-    @Published var currentItemProgress: Double = 0.0
+    // MARK: - State Properties
     @Published var logLines: [String] = []
     @Published var isRunning = false
-    @Published var showingErrorAlert = false
-    @Published var errorMessage: String?
+    @Published var dependenciesReady = false
+    
+    // Progress
+    @Published var currentItemProgress: Double = 0.0
     @Published var currentItemIndex = 0
     @Published var totalItems = 0
     
+    // Error Handling
+    @Published var showingErrorAlert = false
+    @Published var errorMessage: String?
+    
     // MARK: - Private Properties
     private var activeProcess: Process?
-    private let maxLogLines = 500
+    private let maxLogLines = 1000
+    private let progressRegex = try! NSRegularExpression(pattern: #"\[download\]\s+([0-9.]+)% of.*"#)
+
+    private var ytDlpPath: String?
+    private var ffmpegDirectoryPath: String?
+
+    // MARK: - Initialization
+    init() {
+        locateDependencies()
+    }
     
-    // MARK: - Constants
-    private let ytDlpPath = "/opt/homebrew/bin/yt-dlp"
-    private let ffmpegPath = "/opt/homebrew/bin"
-    private let progressPattern = #"(\d{1,3}(?:\.\d+)?)%"# // Regex for progress percentage
+    // MARK: - Dependency Management
     
-    // MARK: - Directory Selection
+    private func locateDependencies() {
+        guard let ytdlp = Bundle.main.path(forResource: "yt-dlp", ofType: nil) else {
+            showError("FATAL: yt-dlp executable not found in the app bundle.")
+            dependenciesReady = false
+            return
+        }
+        self.ytDlpPath = ytdlp
+        
+        guard let ffmpeg = Bundle.main.path(forResource: "ffmpeg", ofType: nil) else {
+            showError("FATAL: ffmpeg executable not found in the app bundle.")
+            dependenciesReady = false
+            return
+        }
+        self.ffmpegDirectoryPath = (ffmpeg as NSString).deletingLastPathComponent
+        
+        addLog("Making bundled tools executable...")
+        do {
+            try makeExecutable(at: ytdlp)
+            try makeExecutable(at: ffmpeg)
+        } catch {
+            showError("Failed to set executable permissions: \(error.localizedDescription)")
+            dependenciesReady = false
+            return
+        }
+        
+        addLog("✅ Dependencies are ready.")
+        dependenciesReady = true
+    }
     
-    /// Opens directory selection dialog
+    private func makeExecutable(at path: String) throws {
+        var permissions = try FileManager.default.attributesOfItem(atPath: path)
+        var posixPermissions = permissions[.posixPermissions] as! UInt16
+        posixPermissions |= 0o111
+        permissions[.posixPermissions] = posixPermissions
+        try FileManager.default.setAttributes(permissions, ofItemAtPath: path)
+    }
+    
+    // MARK: - User Actions
+    
     func selectDownloadDirectory() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        
-        if panel.runModal() == .OK {
-            self.downloadDirectory = panel.url
+        if panel.runModal() == .OK, let url = panel.url {
+            self.downloadDirectory = url
+            addLog("Download location set to: \(url.path)")
         }
     }
     
-    // MARK: - Download Management
-    
-    /// Starts download process
-    func startDownload() {
-        guard let outputDir = downloadDirectory else {
-            showError("Please select a download folder.")
-            return
-        }
-        
-        let urls = isBatchMode ?
-        batchURLs.split(separator: "\n").map(String.init) :
-        [singleURL]
-        
-        guard !urls.isEmpty else {
-            showError(isBatchMode ?
-                      "No URLs found in batch input" :
-                        "Please enter a valid URL")
-            return
-        }
-        
-        Task {
-            isRunning = true
-            currentItemProgress = 0.0
-            currentItemIndex = 0
-            totalItems = urls.count
-            logLines = ["Starting download..."]
-            
-            // Process each URL sequentially
-            for (index, url) in urls.enumerated() {
-                currentItemIndex = index + 1
-                currentItemProgress = 0.0
-                
-                addLog("\nDownloading item \(currentItemIndex)/\(totalItems)")
-                addLog("URL: \(url)")
-                
-                await runYtDlp(for: url, in: outputDir)
-                
-                // Check if download was canceled
-                if !isRunning { break }
-            }
-            
-            isRunning = false
-            addLog("\nDownload completed")
-            
-            if autoOpenFolder {
-                openDownloadDirectory()
-            }
-        }
-    }
-    
-    /// Opens download directory in Finder
     func openDownloadDirectory() {
         guard let dir = downloadDirectory else { return }
         NSWorkspace.shared.open(dir)
     }
     
+    func startDownload() {
+        guard dependenciesReady else {
+            showError("Cannot start download: dependencies are not ready.")
+            return
+        }
+        guard let outputDir = downloadDirectory else {
+            showError("Please choose a download folder first.")
+            return
+        }
+        
+        let urls = isBatchMode ? batchURLs.components(separatedBy: .newlines).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } : [singleURL]
+        
+        guard !urls.isEmpty, !urls[0].trimmingCharacters(in: .whitespaces).isEmpty else {
+            showError(isBatchMode ? "No URLs found in batch input." : "Please enter a video URL.")
+            return
+        }
+        
+        isRunning = true
+        currentItemProgress = 0.0
+        currentItemIndex = 0
+        totalItems = urls.count
+        logLines = ["🚀 Starting download of \(totalItems) item(s)..."]
+        
+        Task {
+            for (index, url) in urls.enumerated() {
+                if !isRunning { break }
+                currentItemIndex = index + 1
+                currentItemProgress = 0.0
+                addLog("\n⬇️ Downloading item \(currentItemIndex)/\(totalItems): \(url)")
+                await runYtDlp(for: url, in: outputDir)
+            }
+            
+            if isRunning {
+                addLog("\n✅ Download queue finished.")
+                if autoOpenFolder {
+                    openDownloadDirectory()
+                }
+            }
+            isRunning = false
+        }
+    }
+    
+    func cancelDownload() {
+        guard isRunning else { return }
+        addLog("\n🛑 User cancelled download. Halting process...")
+        isRunning = false
+        activeProcess?.terminate()
+        activeProcess = nil
+        resetProgress()
+    }
+    
     // MARK: - Core Download Logic
     
-    /// Executes yt-dlp command with configured parameters
-    private func runYtDlp(for url: String, in directory: URL) async {
-        let process = Process()
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
+    private func buildArguments(for url: String, in directory: URL) -> [String]? {
+        guard let ffmpegDir = ffmpegDirectoryPath else {
+            showError("Cannot build arguments: ffmpeg path is missing.")
+            return nil
+        }
         
-        // Store reference to active process
-        activeProcess = process
+        let template = filenameTemplate.trimmingCharacters(in: .whitespaces).isEmpty ? "%(title)s.%(ext)s" : filenameTemplate
+        let outputPath = isBatchMode ? "\(directory.path)/%(playlist_index)s-%(id)s-\(template)" : "\(directory.path)/\(template)"
         
-        // Use default template if filenameTemplate is empty
-        let actualTemplate = filenameTemplate.isEmpty ? "%(title)s.%(ext)s" : filenameTemplate
-            
-        
-        // Configure base arguments
         var args = [
+            url,
             "--newline",
             "--no-warnings",
-            "-o", "\(directory.path)/\( isBatchMode ? "%(id)s_" + actualTemplate : actualTemplate)",
-            "--ffmpeg-location", ffmpegPath
+            "--progress",
+            "--ffmpeg-location", ffmpegDir,
+            "-o", outputPath
         ]
         
-        // Add format-specific arguments
         switch selectedFormat {
-        case .video:
-            args.append(contentsOf: [
-                "-f", "bestvideo[height<=\(videoQuality.pixelValue)]+bestaudio",
-                "--merge-output-format", videoContainer.rawValue
-            ])
-        case .audio:
-            args.append(contentsOf: [
-                "-f", "bestaudio",
-                "--extract-audio",
-                "--audio-format", audioFormat.rawValue,
-                "--audio-quality", audioQuality.rawValue
-            ])
         case .best:
-            args.append(contentsOf: ["-f", "bv*+ba/best"])
-        }
-        
-        // Add optional parameters
-        if !downloadSpeedLimit.isEmpty {
-            args.append(contentsOf: ["-r", downloadSpeedLimit])
-        }
-        
-        if skipExistingFiles {
-            args.append("--skip-downloads")
-        }
-        
-        if !throttleRate.isEmpty {
-            args.append(contentsOf: ["--throttled-rate", throttleRate])
+            args += ["-f", "bv*+ba/b"]
+        case .video:
+            args += ["-f", "bestvideo[height<=\(videoQuality.pixelValue)]+bestaudio/best", "--merge-output-format", videoContainer.rawValue]
+        case .audio:
+            args += ["-f", "bestaudio/best", "--extract-audio", "--audio-format", audioFormat.rawValue, "--audio-quality", audioQuality.rawValue]
         }
         
         if embedSubtitles {
-            args.append(contentsOf: [
-                "--write-sub",
-                "--embed-subs",
-                "--sub-langs", subtitleLanguage
-            ])
+            args += ["--write-sub", "--embed-subs", "--sub-langs", subtitleLanguage.isEmpty ? "all" : subtitleLanguage]
         }
-        
         if embedMetadata {
-            args.append(contentsOf: ["--embed-metadata", "--embed-thumbnail"])
+            args += ["--embed-metadata", "--embed-thumbnail"]
+        }
+        if skipExistingFiles {
+            args += ["--no-overwrites"]
+        }
+        if !downloadSpeedLimit.isEmpty {
+            args += ["-r", downloadSpeedLimit]
+        }
+        if !throttleRate.isEmpty {
+            args += ["--throttled-rate", throttleRate]
         }
         
-        args.append(url)
-        
-        // Configure process
-        process.executableURL = URL(fileURLWithPath: ytDlpPath)
-        process.arguments = args
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-        
-        do {
-            try process.run()
+        return args
+    }
+    
+    /// **FIXED:** This function now uses `withCheckedContinuation` to wrap the callback-based `Process`
+    /// API into a modern `async/await` function. This prevents blocking the main thread.
+    private func runYtDlp(for url: String, in directory: URL) async {
+        guard isRunning else { return }
+
+        guard let ytdlpPath = self.ytDlpPath, let arguments = buildArguments(for: url, in: directory) else {
+            showError("Failed to start yt-dlp: paths or arguments are invalid.")
+            return
+        }
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let process = Process()
+            self.activeProcess = process
             
-            
-            // Process output in real-time
-            for try await line in outputPipe.fileHandleForReading.bytes.lines {
-                // Add cancellation check
-                if !isRunning {
-                    addLog("Canceling download...")
-                    process.terminate()
-                    return
+            process.executableURL = URL(fileURLWithPath: ytdlpPath)
+            process.arguments = arguments
+
+            let outputPipe = Pipe()
+            process.standardOutput = outputPipe
+            process.standardError = outputPipe
+
+            let outputHandle = outputPipe.fileHandleForReading
+            outputHandle.readabilityHandler = { pipe in
+                if let line = String(data: pipe.availableData, encoding: .utf8), !line.isEmpty {
+                    DispatchQueue.main.async {
+                        self.processOutputLine(line)
+                    }
                 }
-                await processOutputLine(line)
             }
-            process.waitUntilExit()
-            
-            // Check for errors
-            if process.terminationStatus != 0 && isRunning {
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-                showError("Download failed: \(errorMessage)")
+
+            process.terminationHandler = { finishedProcess in
+                DispatchQueue.main.async {
+                    if finishedProcess.terminationStatus != 0 && self.isRunning {
+                        self.showError("Download failed with exit code \(finishedProcess.terminationStatus). Check log for details.")
+                    }
+                    self.activeProcess = nil
+                    outputHandle.readabilityHandler = nil
+                    continuation.resume()
+                }
             }
-        } catch {
-            // Handle cancellation as non-error
-            if !isRunning { return }
-            showError("Process execution failed: \(error.localizedDescription)")        }
-        
-        // Clear active process reference
-        activeProcess = nil
-    }
-    
-    // MARK: - Output Processing
-    
-    /// Processes a line of output from yt-dlp
-    private func processOutputLine(_ line: String) async {
-        // Add to log
-        addLog(line)
-        
-        // Update progress if available
-        if let progressValue = parsePercentage(from: line) {
-            currentItemProgress = progressValue / 100
+
+            do {
+                try process.run()
+            } catch {
+                DispatchQueue.main.async {
+                    self.showError("Failed to execute yt-dlp process: \(error.localizedDescription)")
+                    continuation.resume()
+                }
+            }
         }
     }
     
-    /// Extracts progress percentage from output line
-    private func parsePercentage(from line: String) -> Double? {
-        guard let regex = try? NSRegularExpression(pattern: progressPattern),
-              let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
-              let range = Range(match.range(at: 1), in: line)
-        else { return nil }
-        
-        return Double(line[range])
+    // MARK: - Output Processing & Helpers
+    
+    private func processOutputLine(_ output: String) {
+        output.enumerateLines { line, _ in
+            self.addLog(line)
+            
+            if let match = self.progressRegex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)),
+               let range = Range(match.range(at: 1), in: line),
+               let progressValue = Double(line[range]) {
+                self.currentItemProgress = progressValue / 100.0
+            }
+        }
     }
     
-    // MARK: - Log Management
-    
-    /// Adds a line to the log with memory management
     private func addLog(_ message: String) {
-        // Add new message
         logLines.append(message)
-        
-        // Trim log if exceeds max capacity
         if logLines.count > maxLogLines {
             logLines.removeFirst(logLines.count - maxLogLines)
         }
     }
     
-    // MARK: - Error Handling
-    
-    /// Displays error message
     private func showError(_ message: String) {
         errorMessage = message
         showingErrorAlert = true
         isRunning = false
-        activeProcess = nil
-        addLog("ERROR: \(message)")
+        addLog("❌ ERROR: \(message)")
     }
     
-    // MARK: - Cancel Functions
-    
-    func resetProgress() {
+    private func resetProgress() {
         currentItemProgress = 0.0
         currentItemIndex = 0
         totalItems = 0
     }
-    
-    // Update cancelDownload method
-    func cancelDownload() {
-        activeProcess?.terminate()
-        isRunning = false
-        resetProgress()
-        addLog("Download canceled by user")
-    }
-    
 }
-

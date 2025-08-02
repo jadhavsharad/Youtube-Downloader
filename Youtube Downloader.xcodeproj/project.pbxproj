@@ -6,7 +6,14 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		57AB978B2E3ED4C7003A3178 /* ffmpeg in Resources */ = {isa = PBXBuildFile; fileRef = 57AB97862E3ED4C7003A3178 /* ffmpeg */; };
+		57AB978C2E3ED4C7003A3178 /* yt-dlp in Resources */ = {isa = PBXBuildFile; fileRef = 57AB97892E3ED4C7003A3178 /* yt-dlp */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		57AB97862E3ED4C7003A3178 /* ffmpeg */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = ffmpeg; sourceTree = "<group>"; };
+		57AB97892E3ED4C7003A3178 /* yt-dlp */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = "yt-dlp"; sourceTree = "<group>"; };
 		57B21E2A2E2AF7C30027D01A /* Youtube Downloader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Youtube Downloader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -29,9 +36,19 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		57AB97902E3ED4F1003A3178 /* Executables */ = {
+			isa = PBXGroup;
+			children = (
+				57AB97862E3ED4C7003A3178 /* ffmpeg */,
+				57AB97892E3ED4C7003A3178 /* yt-dlp */,
+			);
+			path = Executables;
+			sourceTree = "<group>";
+		};
 		57B21E212E2AF7C30027D01A = {
 			isa = PBXGroup;
 			children = (
+				57AB97902E3ED4F1003A3178 /* Executables */,
 				57B21E2C2E2AF7C30027D01A /* Youtube Downloader */,
 				57B21E2B2E2AF7C30027D01A /* Products */,
 			);
@@ -109,6 +126,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				57AB978B2E3ED4C7003A3178 /* ffmpeg in Resources */,
+				57AB978C2E3ED4C7003A3178 /* yt-dlp in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
