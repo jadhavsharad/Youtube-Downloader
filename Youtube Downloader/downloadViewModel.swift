@@ -32,6 +32,7 @@ enum DownloadFormat: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+
 // MARK: - Download View Model
 @MainActor
 class DownloadViewModel: ObservableObject {
@@ -63,7 +64,9 @@ class DownloadViewModel: ObservableObject {
     @Published var logLines: [String] = []
     @Published var isRunning = false
     @Published var dependenciesReady = false
-    
+    @Published var isSettingUp = false // NEW: Tracks initial setup
+    @Published var setupStatusMessage = "" // NEW: Message for the UI during setup
+
     // Progress
     @Published var currentItemProgress: Double = 0.0
     @Published var currentItemIndex = 0
@@ -78,51 +81,144 @@ class DownloadViewModel: ObservableObject {
     private let maxLogLines = 1000
     private let progressRegex = try! NSRegularExpression(pattern: #"\[download\]\s+([0-9.]+)% of.*"#)
 
+    // Paths will now point to the Application Support directory
     private var ytDlpPath: String?
-    private var ffmpegDirectoryPath: String?
+    private var ffmpegPath: String?
 
     // MARK: - Initialization
     init() {
-        locateDependencies()
+        // Start the dependency check asynchronously
+        Task {
+            await locateOrDownloadDependencies()
+        }
     }
     
     // MARK: - Dependency Management
     
-    private func locateDependencies() {
-        guard let ytdlp = Bundle.main.path(forResource: "yt-dlp", ofType: nil) else {
-            showError("FATAL: yt-dlp executable not found in the app bundle.")
-            dependenciesReady = false
-            return
-        }
-        self.ytDlpPath = ytdlp
-        
-        guard let ffmpeg = Bundle.main.path(forResource: "ffmpeg", ofType: nil) else {
-            showError("FATAL: ffmpeg executable not found in the app bundle.")
-            dependenciesReady = false
-            return
-        }
-        self.ffmpegDirectoryPath = (ffmpeg as NSString).deletingLastPathComponent
-        
-        addLog("Making bundled tools executable...")
-        do {
-            try makeExecutable(at: ytdlp)
-            try makeExecutable(at: ffmpeg)
-        } catch {
-            showError("Failed to set executable permissions: \(error.localizedDescription)")
-            dependenciesReady = false
-            return
+    /// Gets or creates a dedicated directory for our app in ~/Library/Application Support
+    private func getAppSupportDirectory() throws -> URL {
+        guard let appName = Bundle.main.infoDictionary?["CFBundleName"] as? String else {
+            throw NSError(domain: "AppError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not determine application name."])
         }
         
-        addLog("✅ Dependencies are ready.")
-        dependenciesReady = true
+        let appSupportURL = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        let fullPath = appSupportURL.appendingPathComponent(appName)
+        
+        if !FileManager.default.fileExists(atPath: fullPath.path) {
+            try FileManager.default.createDirectory(at: fullPath, withIntermediateDirectories: true, attributes: nil)
+        }
+        return fullPath
     }
     
+    /// Checks for dependencies, and if they don't exist, downloads and sets them up.
+    private func locateOrDownloadDependencies() async {
+        do {
+            let dir = try getAppSupportDirectory()
+            let expectedYtDlpPath = dir.appendingPathComponent("yt-dlp").path
+            let expectedFfmpegPath = dir.appendingPathComponent("ffmpeg").path
+            
+            let ytDlpExists = FileManager.default.fileExists(atPath: expectedYtDlpPath)
+            let ffmpegExists = FileManager.default.fileExists(atPath: expectedFfmpegPath)
+
+            if ytDlpExists && ffmpegExists {
+                addLog("✅ Dependencies found locally.")
+                self.ytDlpPath = expectedYtDlpPath
+                self.ffmpegPath = expectedFfmpegPath
+                self.dependenciesReady = true
+                return
+            }
+            
+            // --- Download & Setup Logic ---
+            isSettingUp = true
+            addLog("Initial setup: preparing required tools...")
+            
+            // 1. Download yt-dlp
+            if !ytDlpExists {
+                setupStatusMessage = "Downloading yt-dlp..."
+                addLog(setupStatusMessage)
+                let ytdlpURL = URL(string: "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos")!
+                try await downloadFile(from: ytdlpURL, to: URL(fileURLWithPath: expectedYtDlpPath))
+                try makeExecutable(at: expectedYtDlpPath)
+                addLog("yt-dlp downloaded successfully.")
+            }
+            
+            // 2. Download ffmpeg
+            if !ffmpegExists {
+                setupStatusMessage = "Downloading ffmpeg..."
+                addLog(setupStatusMessage)
+                
+                // Select the correct ffmpeg build for the user's architecture
+                #if arch(arm64)
+                let ffmpegZipURL = URL(string: "https://evermeet.cx/ffmpeg/getrelease/zip")!
+                addLog("Apple Silicon (arm64) architecture.")
+                #else
+                let ffmpegZipURL = URL(string: "https://evermeet.cx/ffmpeg/getrelease/zip")!
+                addLog("Detected Intel (x86_64) architecture.")
+                #endif
+                
+                let zipPath = dir.appendingPathComponent("ffmpeg")
+                try await downloadFile(from: ffmpegZipURL, to: zipPath)
+                
+                setupStatusMessage = "Unpacking ffmpeg..."
+                addLog(setupStatusMessage)
+                try unzip(file: zipPath, to: dir)
+                
+                // The unzipped file is named 'ffmpeg', so it will be at the expected path.
+                try makeExecutable(at: expectedFfmpegPath)
+//                try FileManager.default.removeItem(at: zipPath) // Clean up the zip file
+                addLog("ffmpeg setup successfully.")
+            }
+            
+            self.ytDlpPath = expectedYtDlpPath
+            self.ffmpegPath = expectedFfmpegPath
+            self.dependenciesReady = true
+            addLog("✅ Dependencies are ready.")
+            
+        } catch {
+            showError("Failed during initial setup: \(error.localizedDescription). Please check your internet connection and restart the app.")
+            self.dependenciesReady = false
+        }
+        
+        isSettingUp = false
+        setupStatusMessage = ""
+    }
+
+    /// Downloads a file from a URL to a local path.
+    private func downloadFile(from url: URL, to destinationURL: URL) async throws {
+        let (tempURL, response) = try await URLSession.shared.download(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "DownloadError", code: (response as? HTTPURLResponse)?.statusCode ?? -1, userInfo: [NSLocalizedDescriptionKey: "Failed to download file from \(url)."])
+        }
+        
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: destinationURL)
+    }
+
+    /// Unzips a file using the system's unzip command.
+    private func unzip(file source: URL, to destination: URL) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        // -o: overwrite files without prompting
+        // -d: destination directory
+        process.arguments = ["-o", source.path, "-d", destination.path]
+        
+        try process.run()
+        process.waitUntilExit()
+        
+        if process.terminationStatus != 0 {
+            throw NSError(domain: "UnzipError", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "Failed to unzip file at \(source.path)."])
+        }
+    }
+
+    /// Sets executable permissions on a file.
     private func makeExecutable(at path: String) throws {
         var permissions = try FileManager.default.attributesOfItem(atPath: path)
-        var posixPermissions = permissions[.posixPermissions] as! UInt16
-        posixPermissions |= 0o111
-        permissions[.posixPermissions] = posixPermissions
+        permissions[.posixPermissions] = 0o755 // rwxr-xr-x
         try FileManager.default.setAttributes(permissions, ofItemAtPath: path)
+        addLog("Made file executable at \(path)")
     }
     
     // MARK: - User Actions
@@ -196,10 +292,12 @@ class DownloadViewModel: ObservableObject {
     // MARK: - Core Download Logic
     
     private func buildArguments(for url: String, in directory: URL) -> [String]? {
-        guard let ffmpegDir = ffmpegDirectoryPath else {
+        // yt-dlp needs the DIRECTORY where ffmpeg is, not the file itself.
+        guard let ffmpegBinaryPath = self.ffmpegPath else {
             showError("Cannot build arguments: ffmpeg path is missing.")
             return nil
         }
+        let ffmpegDir = (ffmpegBinaryPath as NSString).deletingLastPathComponent
         
         let template = filenameTemplate.trimmingCharacters(in: .whitespaces).isEmpty ? "%(title)s.%(ext)s" : filenameTemplate
         let outputPath = isBatchMode ? "\(directory.path)/%(playlist_index)s-%(id)s-\(template)" : "\(directory.path)/\(template)"
@@ -241,8 +339,6 @@ class DownloadViewModel: ObservableObject {
         return args
     }
     
-    /// **FIXED:** This function now uses `withCheckedContinuation` to wrap the callback-based `Process`
-    /// API into a modern `async/await` function. This prevents blocking the main thread.
     private func runYtDlp(for url: String, in directory: URL) async {
         guard isRunning else { return }
 
