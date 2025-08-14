@@ -19,17 +19,18 @@ struct BoolSegmentedPicker<Content: View>: View {
                         .padding(.horizontal, 12)
                         .background(self.selection == option ? Color.accentColor : Color.clear)
                         .foregroundColor(self.selection == option ? .white : .primary)
-                        .cornerRadius(50)
+                        .cornerRadius(6)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(4)
         .background(Color(.windowBackgroundColor))
-        .cornerRadius(50)
+        .cornerRadius(9)
         .overlay(
-            RoundedRectangle(cornerRadius: 50)
+            RoundedRectangle(cornerRadius: 9)
                 .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
         )
     }
 }
+

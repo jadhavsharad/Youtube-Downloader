@@ -66,7 +66,7 @@ class DownloadViewModel: ObservableObject {
     @Published var dependenciesReady = false
     @Published var isSettingUp = false // NEW: Tracks initial setup
     @Published var setupStatusMessage = "" // NEW: Message for the UI during setup
-
+    
     // Progress
     @Published var currentItemProgress: Double = 0.0
     @Published var currentItemIndex = 0
@@ -80,11 +80,12 @@ class DownloadViewModel: ObservableObject {
     private var activeProcess: Process?
     private let maxLogLines = 1000
     private let progressRegex = try! NSRegularExpression(pattern: #"\[download\]\s+([0-9.]+)% of.*"#)
-
+    
     // Paths will now point to the Application Support directory
     private var ytDlpPath: String?
     private var ffmpegPath: String?
-
+    private var ffprobePath: String?
+    
     // MARK: - Initialization
     init() {
         // Start the dependency check asynchronously
@@ -116,17 +117,21 @@ class DownloadViewModel: ObservableObject {
             let dir = try getAppSupportDirectory()
             let expectedYtDlpPath = dir.appendingPathComponent("yt-dlp").path
             let expectedFfmpegPath = dir.appendingPathComponent("ffmpeg").path
+            let expectedFfprobePath = dir.appendingPathComponent("ffprobe").path
             
             let ytDlpExists = FileManager.default.fileExists(atPath: expectedYtDlpPath)
             let ffmpegExists = FileManager.default.fileExists(atPath: expectedFfmpegPath)
-
-            if ytDlpExists && ffmpegExists {
-                addLog("✅ Dependencies found locally.")
+            let ffprobeExists = FileManager.default.fileExists(atPath: expectedFfprobePath)
+            
+            if ytDlpExists && ffmpegExists && ffprobeExists {
+                addLog("✅ All dependencies found locally.")
                 self.ytDlpPath = expectedYtDlpPath
                 self.ffmpegPath = expectedFfmpegPath
+                self.ffprobePath = expectedFfprobePath
                 self.dependenciesReady = true
                 return
             }
+            
             
             // --- Download & Setup Logic ---
             isSettingUp = true
@@ -147,16 +152,8 @@ class DownloadViewModel: ObservableObject {
                 setupStatusMessage = "Downloading ffmpeg..."
                 addLog(setupStatusMessage)
                 
-                // Select the correct ffmpeg build for the user's architecture
-                #if arch(arm64)
                 let ffmpegZipURL = URL(string: "https://evermeet.cx/ffmpeg/getrelease/zip")!
-                addLog("Apple Silicon (arm64) architecture.")
-                #else
-                let ffmpegZipURL = URL(string: "https://evermeet.cx/ffmpeg/getrelease/zip")!
-                addLog("Detected Intel (x86_64) architecture.")
-                #endif
-                
-                let zipPath = dir.appendingPathComponent("ffmpeg")
+                let zipPath = dir.appendingPathComponent("ffmpeg") // Use a unique name for the zip
                 try await downloadFile(from: ffmpegZipURL, to: zipPath)
                 
                 setupStatusMessage = "Unpacking ffmpeg..."
@@ -169,10 +166,29 @@ class DownloadViewModel: ObservableObject {
                 addLog("ffmpeg setup successfully.")
             }
             
+            // 3. Download ffprobe
+            if !ffprobeExists { // NEW: Download ffprobe if it doesn't exist
+                setupStatusMessage = "Downloading ffprobe..."
+                addLog(setupStatusMessage)
+                
+                let ffprobeZipURL = URL(string: "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip")! // The URL you provided
+                let zipPath = dir.appendingPathComponent("ffprobe") // Use a unique name for the zip
+                try await downloadFile(from: ffprobeZipURL, to: zipPath)
+                
+                setupStatusMessage = "Unpacking ffprobe..."
+                addLog(setupStatusMessage)
+                try unzip(file: zipPath, to: dir)
+                
+                try makeExecutable(at: expectedFfprobePath)
+//                try? FileManager.default.removeItem(at: zipPath) // Clean up the zip file
+                addLog("ffprobe setup successfully.")
+            }
+            
             self.ytDlpPath = expectedYtDlpPath
             self.ffmpegPath = expectedFfmpegPath
+            self.ffprobePath = expectedFfprobePath // NEW: Set the ffprobe path
             self.dependenciesReady = true
-            addLog("✅ Dependencies are ready.")
+            addLog("✅ All dependencies are ready.")
             
         } catch {
             showError("Failed during initial setup: \(error.localizedDescription). Please check your internet connection and restart the app.")
@@ -182,7 +198,7 @@ class DownloadViewModel: ObservableObject {
         isSettingUp = false
         setupStatusMessage = ""
     }
-
+    
     /// Downloads a file from a URL to a local path.
     private func downloadFile(from url: URL, to destinationURL: URL) async throws {
         let (tempURL, response) = try await URLSession.shared.download(from: url)
@@ -196,7 +212,7 @@ class DownloadViewModel: ObservableObject {
         }
         try FileManager.default.moveItem(at: tempURL, to: destinationURL)
     }
-
+    
     /// Unzips a file using the system's unzip command.
     private func unzip(file source: URL, to destination: URL) throws {
         let process = Process()
@@ -212,7 +228,7 @@ class DownloadViewModel: ObservableObject {
             throw NSError(domain: "UnzipError", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: "Failed to unzip file at \(source.path)."])
         }
     }
-
+    
     /// Sets executable permissions on a file.
     private func makeExecutable(at path: String) throws {
         var permissions = try FileManager.default.attributesOfItem(atPath: path)
@@ -341,23 +357,23 @@ class DownloadViewModel: ObservableObject {
     
     private func runYtDlp(for url: String, in directory: URL) async {
         guard isRunning else { return }
-
+        
         guard let ytdlpPath = self.ytDlpPath, let arguments = buildArguments(for: url, in: directory) else {
             showError("Failed to start yt-dlp: paths or arguments are invalid.")
             return
         }
-
+        
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let process = Process()
             self.activeProcess = process
             
             process.executableURL = URL(fileURLWithPath: ytdlpPath)
             process.arguments = arguments
-
+            
             let outputPipe = Pipe()
             process.standardOutput = outputPipe
             process.standardError = outputPipe
-
+            
             let outputHandle = outputPipe.fileHandleForReading
             outputHandle.readabilityHandler = { pipe in
                 if let line = String(data: pipe.availableData, encoding: .utf8), !line.isEmpty {
@@ -366,7 +382,7 @@ class DownloadViewModel: ObservableObject {
                     }
                 }
             }
-
+            
             process.terminationHandler = { finishedProcess in
                 DispatchQueue.main.async {
                     if finishedProcess.terminationStatus != 0 && self.isRunning {
@@ -377,7 +393,7 @@ class DownloadViewModel: ObservableObject {
                     continuation.resume()
                 }
             }
-
+            
             do {
                 try process.run()
             } catch {

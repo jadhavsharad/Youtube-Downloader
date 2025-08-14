@@ -4,19 +4,38 @@ import SwiftUI
 // It handles the title and subtitle of the app.
 struct AppHeaderView: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Youtube Downloader")
-                Image(systemName: "video.fill")
-                    .foregroundStyle(Color.accentColor)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Youtube Downloader")
+                    Image(systemName: "video.fill")
+                        .foregroundStyle(Color.accentColor)
+                }
+                .font(.largeTitle)
+                .bold()
+                
+                Text("A simple, minimal and high quality youtube downloader.")
+                    .foregroundStyle(Color.secondary)
             }
-            .font(.title2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom)
             
-            Text("A simple, minimal and high quality youtube downloader.")
-                .foregroundStyle(Color.secondary)
+            Button(action: {
+                if let url = URL(string: "https://github.com/jadhavsharad/Youtube-Downloader") {
+                    NSWorkspace.shared.open(url)
+                }
+            }){
+                Text("View Github")
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 12)
+                    .background(Color.accentColor)
+                    .foregroundStyle(.white)
+                    .cornerRadius(100)
+                    .font(.caption)
+
+                
+            }.buttonStyle(.plain)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom)
     }
 }
 
@@ -27,7 +46,7 @@ struct ModeSelectionView: View {
     var body: some View {
         HStack {
             Text("Choose Mode")
-                .font(.title)
+                .font(.title2)
                 .bold()
             
             Spacer()
@@ -43,7 +62,7 @@ struct ModeSelectionView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, 4)
     }
 }
 
@@ -144,7 +163,7 @@ struct ContentView: View {
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 16) {
                 
                 // Header of the app
                 AppHeaderView()
@@ -324,16 +343,20 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                         }
                     } else {
-                        Button(action: viewModel.startDownload) {
-                            Label("Start Downloading", systemImage: "arrow.down.to.line")
-                                .padding(8)
-                                .frame(minWidth: 150, maxWidth: .infinity)
-                                .background(Color.accentColor)
-                                .cornerRadius(6)
+                        HStack {
+                            Button(action: viewModel.startDownload) {
+                                Label("Start Downloading", systemImage: "arrow.down.to.line")
+                                    .padding(8)
+                                    .frame(minWidth: 150, maxWidth: .infinity)
+                                    .foregroundStyle(.white)
+                                    .background(Color.accentColor)
+                                    .cornerRadius(6)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!viewModel.dependenciesReady || viewModel.isRunning)
+                            .fixedSize()
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!viewModel.dependenciesReady || viewModel.isRunning)
-                        .frame(maxWidth: .infinity, alignment: .center) // Center the button
+                        .frame(maxWidth: .infinity, alignment: .trailing) // Center the button
                     }
                 }
                 
@@ -356,8 +379,8 @@ struct ContentView: View {
             }
             .padding()
         }
-        .scrollIndicators(.hidden) // Hides the main scroll bar
-        .frame(minWidth: 600, maxWidth: .infinity, minHeight: 600, maxHeight: .infinity)
+        .scrollIndicators(.automatic) // Hides the main scroll bar
+        .frame(minWidth: 500, maxWidth: .infinity, minHeight: 550, maxHeight: .infinity)
     }
 }
 
