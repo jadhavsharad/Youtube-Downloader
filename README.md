@@ -9,7 +9,7 @@ A powerful, native, and open-source YouTube downloader built exclusively for App
 <a href="https://github.com/jadhavsharad/Youtube-Downloader/releases"/><img src="https://img.shields.io/github/v/release/jadhavsharad/Youtube-Downloader?style=for-the-badge\&logo=github" alt="Latest Release"/></a>  
 <a href="https://github.com/jadhavsharad/Youtube-Downloader/releases"><img src="https://img.shields.io/github/downloads/jadhavsharad/Youtube-Downloader/total?style=for-the-badge\&logo=icloud\&color=success" alt="Total Downloads"></a>
 <img src="https://img.shields.io/badge/macOS-13.0%2B-blue?style=for-the-badge\&logo=apple" alt="macOS Version"\>  
-<img src="https://img.shields.io/badge/Apple\_Silicon-Optimized-lightgrey?style=for-the-badge\&logo=apple" alt="Apple Silicon">  
+<img src="https://img.shields.io/badge/Apple_Silicon-Optimized-lightgrey?style=for-the-badge\&logo=apple" alt="Apple Silicon"\>  
 <a href="https://github.com/jadhavsharad/Youtube-Downloader/issues"\><img src="https://img.shields.io/github/issues/jadhavsharad/Youtube-Downloader?style=for-the-badge\&logo=github" alt="Open Issues"></a>
 <a href="https://github.com/jadhavsharad/Youtube-Downloader/pulls"\><img src="https://img.shields.io/github/issues-pr/jadhavsharad/Youtube-Downloader?style=for-the-badge\&logo=github" alt="Pull Requests"></a\>
 </div>
